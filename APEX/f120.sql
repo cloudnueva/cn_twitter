@@ -28,12 +28,12 @@ prompt APPLICATION 120 - APEX & ORDS Twitter
 -- Application Export:
 --   Application:     120
 --   Name:            APEX & ORDS Twitter
---   Date and Time:   03:16 Tuesday July 26, 2022
+--   Date and Time:   03:34 Tuesday July 26, 2022
 --   Exported By:     JON@CLOUDNUEVA.COM
 --   Flashback:       0
 --   Export Type:     Application Export
 --     Pages:                      7
---       Items:                   22
+--       Items:                   21
 --       Processes:                5
 --       Regions:                 23
 --       Buttons:                  3
@@ -115,10 +115,11 @@ wwv_flow_imp.create_flow(
 ,p_rejoin_existing_sessions=>'N'
 ,p_csv_encoding=>'Y'
 ,p_auto_time_zone=>'Y'
+,p_error_handling_function=>'cn_utl_pk.apex_error_handler'
 ,p_substitution_string_01=>'APP_NAME'
 ,p_substitution_value_01=>'APEX & ORDS Twitter'
 ,p_last_updated_by=>'JON@CLOUDNUEVA.COM'
-,p_last_upd_yyyymmddhh24miss=>'20220726001812'
+,p_last_upd_yyyymmddhh24miss=>'20220726033345'
 ,p_file_prefix => nvl(wwv_flow_application_install.get_static_app_file_prefix,'')
 ,p_files_version=>10
 ,p_ui_type_name => null
@@ -15518,7 +15519,7 @@ wwv_flow_imp_page.create_page(
 ,p_protection_level=>'C'
 ,p_page_component_map=>'13'
 ,p_last_updated_by=>'JON@CLOUDNUEVA.COM'
-,p_last_upd_yyyymmddhh24miss=>'20220724155520'
+,p_last_upd_yyyymmddhh24miss=>'20220726032817'
 );
 wwv_flow_imp_page.create_page_plug(
  p_id=>wwv_flow_imp.id(16757889141053209)
@@ -15660,6 +15661,7 @@ wwv_flow_imp_page.create_page_item(
 ,p_item_sequence=>10
 ,p_item_plug_id=>wwv_flow_imp.id(250861151849968888)
 ,p_display_as=>'NATIVE_HIDDEN'
+,p_protection_level=>'S'
 ,p_attribute_01=>'Y'
 );
 wwv_flow_imp_page.create_page_item(
@@ -15668,6 +15670,7 @@ wwv_flow_imp_page.create_page_item(
 ,p_item_sequence=>20
 ,p_item_plug_id=>wwv_flow_imp.id(250861151849968888)
 ,p_display_as=>'NATIVE_HIDDEN'
+,p_protection_level=>'S'
 ,p_attribute_01=>'Y'
 );
 wwv_flow_imp_page.create_page_process(
@@ -15805,7 +15808,7 @@ wwv_flow_imp_page.create_page(
 ,p_protection_level=>'C'
 ,p_page_component_map=>'03'
 ,p_last_updated_by=>'JON@CLOUDNUEVA.COM'
-,p_last_upd_yyyymmddhh24miss=>'20220726001812'
+,p_last_upd_yyyymmddhh24miss=>'20220726033329'
 );
 wwv_flow_imp_page.create_page_plug(
  p_id=>wwv_flow_imp.id(16758492225053215)
@@ -16364,7 +16367,7 @@ wwv_flow_imp_page.create_page_item(
 ,p_item_sequence=>50
 ,p_display_as=>'NATIVE_HIDDEN'
 ,p_is_persistent=>'N'
-,p_protection_level=>'B'
+,p_protection_level=>'S'
 ,p_attribute_01=>'Y'
 );
 wwv_flow_imp_page.create_page_item(
@@ -16373,16 +16376,7 @@ wwv_flow_imp_page.create_page_item(
 ,p_item_sequence=>60
 ,p_display_as=>'NATIVE_HIDDEN'
 ,p_is_persistent=>'N'
-,p_protection_level=>'B'
-,p_attribute_01=>'Y'
-);
-wwv_flow_imp_page.create_page_item(
- p_id=>wwv_flow_imp.id(584101283551909635)
-,p_name=>'P10_OLDEST_TWEET_DATE'
-,p_item_sequence=>70
-,p_display_as=>'NATIVE_HIDDEN'
-,p_is_persistent=>'N'
-,p_protection_level=>'B'
+,p_protection_level=>'S'
 ,p_attribute_01=>'Y'
 );
 wwv_flow_imp_page.create_page_item(
@@ -16397,6 +16391,8 @@ wwv_flow_imp_page.create_page_item(
 ,p_field_template=>wwv_flow_imp.id(250824630485968834)
 ,p_item_template_options=>'#DEFAULT#:t-Form-fieldContainer--stretchInputs:t-Form-fieldContainer--large:margin-top-none:t-Form-fieldContainer--radioButtonGroup'
 ,p_lov_display_extra=>'NO'
+,p_protection_level=>'S'
+,p_encrypt_session_state_yn=>'N'
 ,p_attribute_01=>'2'
 ,p_attribute_02=>'SUBMIT'
 ,p_attribute_03=>'N'
@@ -16428,8 +16424,8 @@ wwv_flow_imp_page.create_page_process(
 ,p_process_name=>'Prepare Page'
 ,p_process_sql_clob=>wwv_flow_string.join(wwv_flow_t_varchar2(
 'BEGIN',
-'  SELECT name, image_url, TO_CHAR(oldest_tweet, ''DD-MON-YYYY HH:MIpm'')',
-'  INTO   :P10_CAPTURE_NAME, :P10_CAPTURE_URL, :P10_OLDEST_TWEET_DATE',
+'  SELECT name, image_url',
+'  INTO   :P10_CAPTURE_NAME, :P10_CAPTURE_URL',
 '  FROM   cndemo_twtr_capture',
 '  WHERE  capture_id = :AI_CAPTURE_ID;',
 '  :P10_DAYS := NVL(:P10_DAYS,7);',
@@ -16468,7 +16464,7 @@ wwv_flow_imp_page.create_page(
 ,p_protection_level=>'C'
 ,p_page_component_map=>'03'
 ,p_last_updated_by=>'JON@CLOUDNUEVA.COM'
-,p_last_upd_yyyymmddhh24miss=>'20220722162252'
+,p_last_upd_yyyymmddhh24miss=>'20220726033345'
 );
 wwv_flow_imp_page.create_page_plug(
  p_id=>wwv_flow_imp.id(16759981497053230)
@@ -16602,7 +16598,7 @@ wwv_flow_imp_page.create_page_item(
 ,p_item_sequence=>30
 ,p_item_plug_id=>wwv_flow_imp.id(16759981497053230)
 ,p_display_as=>'NATIVE_HIDDEN'
-,p_protection_level=>'B'
+,p_protection_level=>'S'
 ,p_attribute_01=>'Y'
 );
 wwv_flow_imp_page.create_page_item(
@@ -16611,7 +16607,7 @@ wwv_flow_imp_page.create_page_item(
 ,p_item_sequence=>10
 ,p_item_plug_id=>wwv_flow_imp.id(16759981497053230)
 ,p_display_as=>'NATIVE_HIDDEN'
-,p_protection_level=>'B'
+,p_protection_level=>'S'
 ,p_attribute_01=>'Y'
 );
 wwv_flow_imp_page.create_page_item(
@@ -16620,7 +16616,7 @@ wwv_flow_imp_page.create_page_item(
 ,p_item_sequence=>20
 ,p_item_plug_id=>wwv_flow_imp.id(16759981497053230)
 ,p_display_as=>'NATIVE_HIDDEN'
-,p_protection_level=>'B'
+,p_protection_level=>'S'
 ,p_attribute_01=>'Y'
 );
 wwv_flow_imp_page.create_page_item(
@@ -16629,6 +16625,7 @@ wwv_flow_imp_page.create_page_item(
 ,p_item_sequence=>40
 ,p_item_plug_id=>wwv_flow_imp.id(16759981497053230)
 ,p_display_as=>'NATIVE_HIDDEN'
+,p_protection_level=>'S'
 ,p_attribute_01=>'Y'
 );
 wwv_flow_imp_page.create_page_item(
@@ -16637,6 +16634,7 @@ wwv_flow_imp_page.create_page_item(
 ,p_item_sequence=>60
 ,p_item_plug_id=>wwv_flow_imp.id(16759981497053230)
 ,p_display_as=>'NATIVE_HIDDEN'
+,p_protection_level=>'S'
 ,p_attribute_01=>'Y'
 );
 wwv_flow_imp_page.create_page_item(
@@ -16645,6 +16643,7 @@ wwv_flow_imp_page.create_page_item(
 ,p_item_sequence=>70
 ,p_item_plug_id=>wwv_flow_imp.id(16759981497053230)
 ,p_display_as=>'NATIVE_HIDDEN'
+,p_protection_level=>'S'
 ,p_attribute_01=>'Y'
 );
 wwv_flow_imp_page.create_page_item(
@@ -16653,6 +16652,7 @@ wwv_flow_imp_page.create_page_item(
 ,p_item_sequence=>80
 ,p_item_plug_id=>wwv_flow_imp.id(16759981497053230)
 ,p_display_as=>'NATIVE_HIDDEN'
+,p_protection_level=>'S'
 ,p_attribute_01=>'Y'
 );
 wwv_flow_imp_page.create_page_item(
@@ -16661,6 +16661,7 @@ wwv_flow_imp_page.create_page_item(
 ,p_item_sequence=>90
 ,p_item_plug_id=>wwv_flow_imp.id(16759981497053230)
 ,p_display_as=>'NATIVE_HIDDEN'
+,p_protection_level=>'S'
 ,p_attribute_01=>'Y'
 );
 wwv_flow_imp_page.create_page_da_event(
@@ -17034,7 +17035,7 @@ wwv_flow_imp_page.create_page(
 ,p_protection_level=>'C'
 ,p_page_component_map=>'04'
 ,p_last_updated_by=>'JON@CLOUDNUEVA.COM'
-,p_last_upd_yyyymmddhh24miss=>'20220724161045'
+,p_last_upd_yyyymmddhh24miss=>'20220726032944'
 );
 wwv_flow_imp_page.create_page_plug(
  p_id=>wwv_flow_imp.id(584775273386527246)
@@ -17360,7 +17361,7 @@ wwv_flow_imp_page.create_page_item(
 ,p_name=>'P30_CAPTURE_URL'
 ,p_item_sequence=>50
 ,p_display_as=>'NATIVE_HIDDEN'
-,p_protection_level=>'B'
+,p_protection_level=>'S'
 ,p_attribute_01=>'Y'
 );
 wwv_flow_imp_page.create_page_item(
@@ -17368,7 +17369,7 @@ wwv_flow_imp_page.create_page_item(
 ,p_name=>'P30_CAPTURE_NAME'
 ,p_item_sequence=>70
 ,p_display_as=>'NATIVE_HIDDEN'
-,p_protection_level=>'B'
+,p_protection_level=>'S'
 ,p_attribute_01=>'Y'
 );
 wwv_flow_imp_page.create_page_process(
