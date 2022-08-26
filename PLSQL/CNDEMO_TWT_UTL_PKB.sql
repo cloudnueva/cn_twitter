@@ -12,6 +12,7 @@ CREATE OR REPLACE PACKAGE BODY CNDEMO_TWTR_UTL_PK AS
 -- VER        DATE         AUTHOR           DESCRIPTION
 -- ========   ===========  ================ =======================================
 -- 2022.1.0   18-JUL-2022  jdixon           Created.
+-- 2022.1.1   13-AUG-2022  jdixon           Fixed Chart view page30_load
 -----------------------------------------------------------------------------------
 
   GC_SCOPE_PREFIX  CONSTANT VARCHAR2(100) := LOWER($$plsql_unit) || '.';
@@ -110,6 +111,7 @@ BEGIN
       lr_user_rec.location          := l_user_obj.get_String('location');
       lr_user_rec.extra_url         := l_user_obj.get_String('url');
       l_date_time_str               := l_user_obj.get_String('created_at');
+      -- TO_UTC_TIMESTAMP_TZ Converts an ISO 8601 string to a Timestamp with Timezone.
       SELECT TO_UTC_TIMESTAMP_TZ(l_date_time_str) INTO lr_user_rec.created_at FROM sys.dual;
       lr_user_rec.profile_image_url := l_user_obj.get_String('profile_image_url');
       lr_user_rec.followers_count   := l_user_obj.get_Object('public_metrics').get_Number('followers_count');
@@ -188,6 +190,7 @@ FUNCTION get_tweet_type (p_twtr_refs IN JSON_ARRAY_T)
   l_is_reply            BOOLEAN := FALSE;
 
 BEGIN
+  -- Determine the 'Tweet Type'.
   l_twtr_refs_count := p_twtr_refs.get_size;
   FOR i IN 0..l_twtr_refs_count -1 LOOP
     CASE JSON_OBJECT_T(p_twtr_refs.get(i)).get_String('type')
@@ -224,12 +227,14 @@ BEGIN
 
   l_tweet_count := p_tweets.get_size;
 
+  -- Loop through Tweets in the Response.
   FOR i IN 0..l_tweet_count -1 LOOP
     lr_tweet_rec               := lr_tweet_rec_miss;
     l_tweet_obj                := JSON_OBJECT_T(p_tweets.get(i));
     lr_tweet_rec.tweet_id      := l_tweet_obj.get_Number('id');
     lr_tweet_rec.author_id     := l_tweet_obj.get_Number('author_id');
     l_date_time_str            := l_tweet_obj.get_String('created_at');
+    -- TO_UTC_TIMESTAMP_TZ Converts an ISO 8601 string to a Timestamp with Timezone.
     SELECT TO_UTC_TIMESTAMP_TZ(l_date_time_str) INTO lr_tweet_rec.created_at FROM sys.dual;
     lr_tweet_rec.text          := l_tweet_obj.get_String('text');
     lr_tweet_rec.retweet_count := l_tweet_obj.get_Object('public_metrics').get_Number('retweet_count');
@@ -279,7 +284,7 @@ BEGIN
 
   logger.log('START', l_logger_scope, NULL, l_logger_params);
   
-  -- Fetch List of Capture Identifiers
+  -- Fetch List of Capture Identifiers (searches to perform)
   OPEN  cr_captures;
   FETCH cr_captures BULK COLLECT INTO lt_captures;
   CLOSE cr_captures;
@@ -299,6 +304,7 @@ BEGIN
   lt_parm_names(5)  := 'max_results';
   lt_parm_values(5) := GC_TWTR_RECENT_MAX_RESULTS;
 
+  -- Loop through captures (searches to perform)
   FOR i IN 1..lt_captures.COUNT() LOOP
     -- Initialize Values for the Capture.
     l_batch_number    := 0;
@@ -309,6 +315,7 @@ BEGIN
     -- Set Query Parameter for the capture.
     lt_parm_values(1) := lt_captures(i).query_value;
     
+    -- Start an Infinitie Loop, End Loop when all Tweets returned from the Search have been processed.
     LOOP
       l_logger_params.DELETE();
       l_batch_number := l_batch_number + 1;
@@ -358,7 +365,7 @@ BEGIN
         -- Process the Twitter 'users' array.
         handle_users (p_users => l_twtr_object.get_Object('includes').get_Array('users'), p_action => 'CU');
         
-        -- Decide if we need to fetch more records.
+        -- Decide if we need to fetch more Tweets.
         IF l_next_token IS NULL OR l_batch_number > GC_TWTR_RECENT_MAX_ITERATIONS THEN
           -- Exit Loop of Web Service Calls.
           EXIT;
@@ -573,6 +580,7 @@ BEGIN
     l_iteration_count := l_iteration_count + 1;
     
     IF (l_iteration_count >= 100 OR l_total_count >= l_user_count) THEN
+      -- Process batches of up to 100 Users at a time.
       l_logger_params.DELETE();
       l_batch_number := l_batch_number + 1;
       logger.append_param(l_logger_params, 'iteration_count', l_iteration_count);
@@ -581,7 +589,7 @@ BEGIN
       BEGIN
         -- Get Payload.
         l_user_json := apex_web_service.make_rest_request
-         (p_url                  => GC_TWTR_USER_API_URL,
+         (p_url                  => GC_TWTR_USERS_BY_API_URL,
           p_http_method          => 'GET',
           p_transfer_timeout     => GC_TWTR_API_TIMEOUT_SECS,
           p_parm_name            => lt_parm_names,
@@ -709,6 +717,7 @@ SELECT COUNT(1)                tweet_total
 ,      NULL
 FROM   cndemo_twtr_tweets_stats_v
 WHERE  capture_id = :CAPTURE_ID
+AND    tweet_type_code = 'ORIGINAL'
 GROUP BY TRUNC(created_at,'WW')]';
 
 BEGIN
@@ -740,6 +749,220 @@ EXCEPTION WHEN OTHERS THEN
   logger.log_error('Unhandled Error ['||SQLERRM||']', l_logger_scope, NULL, l_logger_params);
 END page30_load;
 
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+PROCEDURE build_user_following_list (p_user_id IN NUMBER) IS
+
+  l_logger_scope        logger_logs.SCOPE%TYPE := GC_SCOPE_PREFIX || utl_call_stack.subprogram(1)(2);
+  l_logger_params       logger.tab_param;
+  http_request_failed   exception;
+  pragma exception_init (http_request_failed, -29273); 
+  lt_parm_names         apex_application_global.VC_ARR2;
+  lt_parm_values        apex_application_global.VC_ARR2;
+  l_following_json      CLOB;
+  l_following_url       VARCHAR2 (500);
+  l_following_obj       JSON_OBJECT_T;
+  l_following_users_arr JSON_ARRAY_T;
+  l_following_user_obj  JSON_OBJECT_T;
+  l_result_count        PLS_INTEGER;
+  l_next_token          VARCHAR2(50);
+  l_total_count         PLS_INTEGER := 0;
+  l_iteration_count     PLS_INTEGER := 0;
+
+BEGIN
+
+  l_following_url := REPLACE(GC_TWTR_FOLLOWING_API_URL, '#USER_ID#', p_user_id);
+  logger.append_param(l_logger_params, 'user_id', p_user_id);
+  logger.append_param(l_logger_params, 'following_url', l_following_url);
+  logger.log('START', l_logger_scope, NULL, l_logger_params);
+  
+  -- Default Web Service Parameters
+  lt_parm_names(1)  := 'user.fields';
+  lt_parm_values(1) := GC_USER_FIELDS_FOLLOWERS;
+  lt_parm_names(2)  := 'max_results';
+  lt_parm_values(2) := 1000;
+
+  apex_collection.create_or_truncate_collection(p_collection_name => 'FOLLOWERS');
+
+  -- Loop through up to a maximum of 2 times, usually this will only be once.
+  FOR i IN 1..2 LOOP
+    -- Initialize Values for the Iteration.
+    l_logger_params.DELETE();
+    logger.log('Start Iteration ['||i||']', l_logger_scope, NULL, l_logger_params);
+
+    BEGIN
+      -- Call Following API.
+      l_following_json := apex_web_service.make_rest_request
+       (p_url                  => l_following_url,
+        p_http_method          => 'GET',
+        p_transfer_timeout     => GC_TWTR_API_TIMEOUT_SECS,
+        p_parm_name            => lt_parm_names,
+        p_parm_value           => lt_parm_values,
+        p_credential_static_id => GC_TWTR_RECENT_CREDENTIAL_ID,
+        p_token_url            => GC_TWTR_TOKEN_API_URL);
+    EXCEPTION WHEN http_request_failed THEN
+      logger.append_param(l_logger_params, 'following_json', l_following_json);
+      logger.log_error('Twitter Following API Timed out', l_logger_scope, NULL, l_logger_params);
+      RETURN;
+    END;
+      
+    -- Check if the call was sucessful.
+    IF apex_web_service.g_status_code != 200 THEN
+      logger.append_param(l_logger_params, 'response_code', apex_web_service.g_status_code);
+      logger.append_param(l_logger_params, 'following_json', l_following_json);
+      logger.log_error('Twitter Following API  Failed', l_logger_scope, NULL, l_logger_params);
+      RETURN;
+    END IF;
+  
+    -- Parse the Response.
+    l_following_obj := JSON_OBJECT_T.PARSE(l_following_json);
+
+    -- Get the token for the next set of records (if there is one).
+    l_next_token   := l_following_obj.get_Object('meta').get_String('next_token');
+    l_result_count := l_following_obj.get_Object('meta').get_String('result_count');
+    logger.append_param(l_logger_params, 'next_token', l_next_token);
+    logger.append_param(l_logger_params, 'result_count', l_result_count);
+  
+    IF l_result_count > 0 THEN
+      -- Add Users to Collection. 
+      l_following_users_arr := l_following_obj.get_Array('data');
+      FOR x IN 0..l_result_count -1 LOOP
+        l_following_user_obj := JSON_OBJECT_T(l_following_users_arr.get(x));
+          apex_collection.add_member
+           (p_collection_name => 'FOLLOWERS',
+            p_c001            => l_following_user_obj.get_String('username'),
+            p_c002            => l_following_user_obj.get_String('name'),
+            p_c003            => l_following_user_obj.get_String('location'),
+            p_n001            => l_following_user_obj.get_Number('id'),
+            p_n002            => l_following_user_obj.get_Object('public_metrics').get_Number('tweet_count'),
+            p_n003            => l_following_user_obj.get_Object('public_metrics').get_Number('followers_count'),
+            p_n004            => l_following_user_obj.get_Object('public_metrics').get_Number('following_count'));
+      END LOOP;
+      
+      -- Decide if we need to fetch more records.
+      IF l_next_token IS NULL THEN
+        -- Exit Loop of Web Service Calls.
+        EXIT;
+      ELSE 
+        lt_parm_names(3)  := 'pagination_token';
+        lt_parm_values(3) := l_next_token;
+      END IF;
+
+     ELSE
+       -- No Tweets found in Response.
+       logger.log_warn('No Results from Twitter API '||l_following_json, l_logger_scope, NULL, l_logger_params);
+       EXIT;
+     END IF;
+
+    logger.log(' > End Iteration ['||i||']', l_logger_scope, NULL, l_logger_params);
+
+  END LOOP;
+
+  logger.log('END', l_logger_scope, NULL, l_logger_params);
+
+EXCEPTION WHEN OTHERS THEN
+  logger.log_error('Unhandled Error ['||SQLERRM||']', l_logger_scope, NULL, l_logger_params);
+END build_user_following_list;
+
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+PROCEDURE user_info
+ (p_user_id IN NUMBER) IS
+
+  CURSOR cr_user_info IS
+    SELECT username
+    ,      name
+    ,      profile_image_url
+    ,      profile_url
+    ,      NVL(extra_url,'https://apex.oracle.com') extra_url
+    ,      TO_CHAR(created_at, 'Month YYYY') created_at
+    ,      NVL(location, 'Unknown')  location
+    ,      followers_count
+    ,      following_count
+    ,      tweet_count
+    FROM   cndemo_twtr_users
+    WHERE  author_id = p_user_id;
+
+  l_logger_scope        logger_logs.SCOPE%TYPE := GC_SCOPE_PREFIX || utl_call_stack.subprogram(1)(2);
+  l_logger_params       logger.tab_param;
+  lr_user_info          cr_user_info%ROWTYPE;
+  l_user_url            VARCHAR2(500);
+  l_user_json           CLOB;
+  l_user_obj            JSON_OBJECT_T;
+  l_user_data_obj       JSON_OBJECT_T;
+  lt_parm_names         apex_application_global.VC_ARR2;
+  lt_parm_values        apex_application_global.VC_ARR2;
+  l_created_at_str      VARCHAR2(100);
+  l_created_at          TIMESTAMP WITH LOCAL TIME ZONE;
+
+BEGIN
+
+  logger.append_param(l_logger_params, 'user_id', p_user_id);
+  logger.log('Start', l_logger_scope, NULL, l_logger_params);
+
+  -- Check if we have user details in the local DB.
+  OPEN  cr_user_info;
+  FETCH cr_user_info INTO lr_user_info;
+  CLOSE cr_user_info;
+
+  IF lr_user_info.username IS NOT NULL THEN
+    -- Populate APEX Page Items based on data in the local DB.
+    apex_util.set_session_state('P15_USERNAME', lr_user_info.username);
+    apex_util.set_session_state('P15_NAME', lr_user_info.name);
+    apex_util.set_session_state('P15_PROFILE_IMAGE_URL', lr_user_info.profile_image_url);
+    apex_util.set_session_state('P15_PROFILE_URL', lr_user_info.profile_url);
+    apex_util.set_session_state('P15_EXTRA_URL', lr_user_info.extra_url);
+    apex_util.set_session_state('P15_DATE_JOINED', lr_user_info.created_at);
+    apex_util.set_session_state('P15_LOCATION', lr_user_info.location);
+    apex_util.set_session_state('P15_FOLLOWERS_COUNT', TO_CHAR(lr_user_info.followers_count,'999G999G999G999G999G999G990'));
+    apex_util.set_session_state('P15_FOLLOWING_COUNT', TO_CHAR(lr_user_info.following_count,'999G999G999G999G999G999G990'));
+    apex_util.set_session_state('P15_TWEET_COUNT', TO_CHAR(lr_user_info.tweet_count,'999G999G999G999G999G999G990'));
+  ELSE
+    -- User not in the Local DB, Get User Info Using API.
+    lt_parm_names(1)  := 'user.fields';
+    lt_parm_values(1) := GC_USER_FIELDS;
+    l_user_url := REPLACE(GC_TWTR_USER_API_URL,'#USER_ID#',p_user_id);
+    logger.append_param(l_logger_params, 'user_url', l_user_url);
+    l_user_json := apex_web_service.make_rest_request
+     (p_url                  => l_user_url,
+      p_http_method          => 'GET',
+      p_transfer_timeout     => GC_TWTR_API_TIMEOUT_SECS,
+      p_parm_name            => lt_parm_names,
+      p_parm_value           => lt_parm_values,
+      p_credential_static_id => GC_TWTR_RECENT_CREDENTIAL_ID,
+      p_token_url            => GC_TWTR_TOKEN_API_URL);
+      
+    -- Check if the call was sucessful.
+    IF apex_web_service.g_status_code != 200 THEN
+      logger.append_param(l_logger_params, 'response_code', apex_web_service.g_status_code);
+      logger.append_param(l_logger_params, 'user_json', l_user_json);
+      logger.log_error('Twitter User API  Failed', l_logger_scope, NULL, l_logger_params);
+      RETURN;
+    END IF;
+  
+    -- Parse the Response an populate APEX Page Items.
+    l_user_obj := JSON_OBJECT_T.PARSE(l_user_json);
+    l_user_data_obj := l_user_obj.get_Object('data');
+    apex_util.set_session_state('P15_USERNAME', l_user_data_obj.get_String('username'));
+    apex_util.set_session_state('P15_NAME', l_user_data_obj.get_String('name'));
+    apex_util.set_session_state('P15_PROFILE_IMAGE_URL', l_user_data_obj.get_String('profile_image_url'));
+    apex_util.set_session_state('P15_PROFILE_URL', 'https://twitter.com/' || l_user_data_obj.get_String('username'));
+    apex_util.set_session_state('P15_EXTRA_URL', l_user_data_obj.get_String('url'));
+    l_created_at_str := l_user_data_obj.get_String('created_at');
+    SELECT TO_UTC_TIMESTAMP_TZ(l_created_at_str) INTO l_created_at FROM sys.dual;
+    apex_util.set_session_state('P15_DATE_JOINED', TO_CHAR(l_created_at, 'Month YYYY'));
+    apex_util.set_session_state('P15_LOCATION', l_user_data_obj.get_String('location'));
+    apex_util.set_session_state('P15_FOLLOWERS_COUNT', TO_CHAR(l_user_data_obj.get_Object('public_metrics').get_Number('followers_count'),'999G999G999G999G999G999G990'));
+    apex_util.set_session_state('P15_FOLLOWING_COUNT', TO_CHAR(l_user_data_obj.get_Object('public_metrics').get_Number('following_count'),'999G999G999G999G999G999G990'));
+    apex_util.set_session_state('P15_TWEET_COUNT', TO_CHAR(l_user_data_obj.get_Object('public_metrics').get_Number('tweet_count'),'999G999G999G999G999G999G990'));
+
+  END IF;
+
+  logger.log('End', l_logger_scope, NULL, l_logger_params);
+  
+EXCEPTION WHEN OTHERS THEN
+  logger.log_error('Unhandled Error ['||SQLERRM||']', l_logger_scope, NULL, l_logger_params);
+END user_info;
 
 END CNDEMO_TWTR_UTL_PK;
 /
