@@ -10,7 +10,6 @@ CREATE TABLE CNDEMO_TWTR_USERS
 ,following_count     NUMBER NOT NULL
 ,tweet_count         NUMBER NOT NULL
 ,profile_image_url   VARCHAR2(100)
-,profile_url         VARCHAR2(100)
 ,extra_url           VARCHAR2(100)
 ,creation_date       TIMESTAMP WITH LOCAL TIME ZONE NOT NULL
 ,last_update_date    TIMESTAMP WITH LOCAL TIME ZONE NOT NULL
