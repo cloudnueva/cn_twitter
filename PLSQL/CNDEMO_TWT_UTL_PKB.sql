@@ -13,6 +13,7 @@ CREATE OR REPLACE PACKAGE BODY CNDEMO_TWTR_UTL_PK AS
 -- ========   ===========  ================ =======================================
 -- 2022.1.0   18-JUL-2022  jdixon           Created.
 -- 2022.1.1   13-AUG-2022  jdixon           Fixed Chart view page30_load
+-- 2022.1.2   01-NOV-2022  jdixon           Changed Chart to by Month view page30_load
 -----------------------------------------------------------------------------------
 
   GC_SCOPE_PREFIX  CONSTANT VARCHAR2(100) := LOWER($$plsql_unit) || '.';
@@ -704,13 +705,13 @@ SELECT TO_CHAR(created_at, 'D')   day_number
 FROM   totals
 GROUP BY TO_CHAR(created_at, 'Day'), TO_CHAR(created_at, 'D')]';
 
-  l_by_week_sql     CONSTANT VARCHAR2(1000) := q'[
+  l_by_month_sql     CONSTANT VARCHAR2(1000) := q'[
 SELECT COUNT(1)                tweet_total
 ,      SUM(non_original_sum)   retweet_total
 ,      SUM(like_count)         like_total
 ,      0
 ,      0
-,      TRUNC(created_at,'WW')  posted_date
+,      TRUNC(created_at,'MM')  posted_date
 ,      NULL
 ,      NULL
 ,      NULL
@@ -718,7 +719,7 @@ SELECT COUNT(1)                tweet_total
 FROM   cndemo_twtr_tweets_stats_v
 WHERE  capture_id = :CAPTURE_ID
 AND    tweet_type_code = 'ORIGINAL'
-GROUP BY TRUNC(created_at,'WW')]';
+GROUP BY TRUNC(created_at,'MM')]';
 
 BEGIN
 
@@ -737,10 +738,10 @@ BEGIN
     p_values             => apex_util.string_to_table(p_capture_id),
     p_truncate_if_exists => 'YES');
 
-  -- Create Collection for By Week
+  -- Create Collection for By Month Chart
   apex_collection.create_collection_from_queryb2
-   (p_collection_name    => 'CHART_BY_WEEK',
-    p_query              => l_by_week_sql,
+   (p_collection_name    => 'CHART_BY_MONTH',
+    p_query              => l_by_month_sql,
     p_names              => apex_util.string_to_table('CAPTURE_ID'),
     p_values             => apex_util.string_to_table(p_capture_id),
     p_truncate_if_exists => 'YES');
